@@ -2,6 +2,7 @@
 #include <stdlib.h>
 
 typedef unsigned char uchar;
+typedef unsigned short ushort;
 const int NUM_REGS = 8;
 
 const char * byteRegs[NUM_REGS] =
@@ -113,7 +114,7 @@ bool decode (unsigned char * data, int size)
                 return false;
             }
 
-            const char byte2 = p[i + 1];
+            const uchar byte2 = p[i + 1];
             const uchar reg = byte & 0b00000111;
             if (reg >= NUM_REGS)
             {
@@ -122,7 +123,7 @@ bool decode (unsigned char * data, int size)
             }
 
             const char * reg1 = nullptr;
-            short data = (short)byte2;
+            ushort data = (ushort)byte2;
 
             // Wide?
             if (!w)
@@ -132,7 +133,7 @@ bool decode (unsigned char * data, int size)
             else
             {
                 const uchar byte3 = p[i + 2];
-                data |= byte3 << 8;
+                data |= (ushort)(byte3) << 8;
                 reg1 = wordRegs[reg];
             }
 
