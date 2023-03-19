@@ -34,38 +34,38 @@ bool decode (unsigned char * data, int size)
     int i = 0;
     while (i < size)
     {
-        uchar byte = p[i];
-        uchar opCode = byte & 0b10001000;
-        if (opCode == 0b10001000)
+        const uchar byte = p[i];
+        if (((byte >> 2) & 0b00111111) == 0b00100010)
         {
             if (i + 1 >= size)
             {
                 printf("Not enough bytes in instruction stream\n");
                 return false;
             }
-            
-            uchar byte2 = p[i+1];
-            uchar mod = (byte2 & 0b11000000) >> 6;
+
+            const uchar byte2 = p[i+1];
+            const uchar mod = (byte2 & 0b11000000) >> 6;
             // Register to register
             if (mod == 0b11)
             {
-                unsigned char reg = (byte2 & 0b00111000) >> 3;
+                const uchar reg = (byte2 & 0b00111000) >> 3;
                 if (reg >= NUM_REGS)
                 {
                     printf("Register index for REG is too large\n");
                     return false;
                 }
 
-                unsigned char rm = byte2 & 0b00000111;
+                const uchar rm = byte2 & 0b00000111;
                 if (rm >= NUM_REGS)
                 {
                     printf("Register index for R/m is too large\n");
                     return false;
                 }
-                
-                const char * reg1 = 0, * reg2 = 0;
-                const int w = (byte & 0b00000001) != 0;
-                if (w == 0)
+
+                const char * reg1 = nullptr, * reg2 = nullptr;
+                const bool w = (byte & 0b00000001) != 0;
+                // Wide?
+                if (!w)
                 {
                     reg1 = byteRegs[reg];
                     reg2 = byteRegs[rm];
@@ -75,9 +75,9 @@ bool decode (unsigned char * data, int size)
                     reg1 = wordRegs[reg];
                     reg2 = wordRegs[rm];
                 }
-                
+
                 const char * r1 = 0, * r2 = 0;
-                
+
                 const int d = (byte & 0b00000010) != 0;
                 if (d == 0)
                 {
@@ -92,7 +92,7 @@ bool decode (unsigned char * data, int size)
                     r1 = reg1;
                     r2 = reg2;
                 }
-                
+
                 printf("mov %s,%s\n", r1, r2);
             }
             else
@@ -100,8 +100,45 @@ bool decode (unsigned char * data, int size)
                 printf("Only register to register mode is supported\n");
                 return false;
             }
-            
+
             i += 2;
+        }
+        else if (((byte >> 4) & 0b00001111) == 0b00001011)
+        {
+            const bool w = ((byte >> 3) & 0b00000001) != 0;
+            const int extraBytes = w ? 2 : 1;
+            if (i + extraBytes >= size)
+            {
+                printf("Not enough bytes in instruction stream\n");
+                return false;
+            }
+
+            const char byte2 = p[i + 1];
+            const uchar reg = byte & 0b00000111;
+            if (reg >= NUM_REGS)
+            {
+                printf("Register index for REG is too large\n");
+                return false;
+            }
+
+            const char * reg1 = nullptr;
+            short data = (short)byte2;
+
+            // Wide?
+            if (!w)
+            {
+                reg1 = byteRegs[reg];
+            }
+            else
+            {
+                const uchar byte3 = p[i + 2];
+                data |= byte3 << 8;
+                reg1 = wordRegs[reg];
+            }
+
+            printf("mov %s,%d\n", reg1, data);
+
+            i += 1 + extraBytes;
         }
         else
         {
