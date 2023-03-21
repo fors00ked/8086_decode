@@ -30,8 +30,35 @@ const char * wordRegs[NUM_REGS] =
     "di"
 };
 
-const char * moveSemantics = "move";
-const char * addSemantics = "add";
+enum Instruction
+{
+    Mov = 0,
+    Add,
+    Sub,
+    Cmp,
+    InstructionMax
+};
+
+enum InstructionSubtype
+{
+    MoveRM = 0,     // Move to/from register/memory
+    AddRM,          // Add register/memory
+    MoveImmRM,      // Move immediate to register/memory
+    MoveImmR,       // Move immediate to register
+    AddImm,         // Add immediate
+    AddAcc,         // Add to accumulator
+    InstructionSubtypeMax
+};
+
+const char * Semantics[] =
+{
+    "mov",
+    "add",
+    "sub",
+    "cmp"
+};
+
+static_assert(Instruction::InstructionMax == sizeof(Semantics) / sizeof(Semantics[0]));
 
 const char * GetEffectiveAddress(int rm)
 {
@@ -68,6 +95,44 @@ const char * GetEffectiveAddress(int rm)
     return addr;
 }
 
+Instruction GetInstruction(uchar byte, InstructionSubtype * type)
+{
+    *type = InstructionSubtypeMax;
+
+    if (((byte >> 2) & 0b00111111) == 0b00100010)
+    {
+        *type = MoveRM;
+        return Mov;
+    }
+    else if (((byte >> 2) & 0b00111111) == 0b00000000)
+    {
+        *type = AddRM;
+        return Add;
+    }
+    else if (((byte >> 1) & 0b01111111) == 0b01100011)
+    {
+        *type = MoveImmRM;
+        return Mov;
+    }
+    else if (((byte >> 2) & 0b00111111) == 0b00100000)
+    {
+        *type = AddImm;
+        return Add;
+    }
+    else if (((byte >> 1) & 0b01111111) == 0b00000010)
+    {
+        *type = AddAcc;
+        return Add;
+    }
+    else if (((byte >> 4) & 0b00001111) == 0b00001011)
+    {
+        *type = MoveImmR;
+        return Mov;
+    }
+
+    return InstructionMax;
+}
+
 bool decode (unsigned char * data, int size)
 {
     unsigned char * p = data;
@@ -75,37 +140,14 @@ bool decode (unsigned char * data, int size)
     while (i < size)
     {
         const uchar byte = p[i];
-        bool moveRM = false, addRM = false, moveImm = false, addImm = false, addAcc = false;
 
-        const char * instruction = nullptr;
-        if (((byte >> 2) & 0b00111111) == 0b00100010)
-        {
-            moveRM = true;
-            instruction = moveSemantics;
-        }
-        else if (((byte >> 2) & 0b00111111) == 0b00000000)
-        {
-            addRM = true;
-            instruction = addSemantics;
-        }
-        else if (((byte >> 1) & 0b01111111) == 0b01100011)
-        {
-            moveImm = true;
-            instruction = moveSemantics;
-        }
-        else if (((byte >> 2) & 0b00111111) == 0b00100000)
-        {
-            addImm = true;
-            instruction = addSemantics;
-        }
-        else if (((byte >> 1) & 0b01111111) == 0b00000010)
-        {
-            addAcc = true;
-            instruction = addSemantics;
-        }
+        InstructionSubtype instructionType;
+        Instruction instruction = GetInstruction(byte, &instructionType);
+
+        const char * semantics = Semantics[instruction];
 
         // MOV/ADD to/from register/memory
-        if (moveRM || addRM)
+        if (instructionType == MoveRM || instructionType == AddRM)
         {
             int extraBytes = 1;
             assert(i + extraBytes < size);
@@ -203,11 +245,11 @@ bool decode (unsigned char * data, int size)
                     // REG=source
                     if (disp == 0)
                     {
-                        printf("%s [%s], %s\n", instruction, addr, reg1);
+                        printf("%s [%s], %s\n", semantics, addr, reg1);
                     }
                     else
                     {
-                        printf("%s [%s + %d], %s\n", instruction, addr, disp, reg1);
+                        printf("%s [%s + %d], %s\n", semantics, addr, disp, reg1);
                     }
                 }
                 else
@@ -215,11 +257,11 @@ bool decode (unsigned char * data, int size)
                     // REG=destination
                     if (disp == 0)
                     {
-                        printf("%s %s, [%s]\n", instruction, reg1, addr);
+                        printf("%s %s, [%s]\n", semantics, reg1, addr);
                     }
                     else
                     {
-                        printf("%s %s, [%s + %d]\n", instruction, reg1, addr, disp);
+                        printf("%s %s, [%s + %d]\n", semantics, reg1, addr, disp);
                     }
                 }
             }
@@ -227,7 +269,7 @@ bool decode (unsigned char * data, int size)
             i += 1 + extraBytes;
         }
         // MOV/ADD immediate to register/memory
-        else if (moveImm || addImm)
+        else if (instructionType == MoveImmRM || instructionType == AddImm)
         {
             int extraBytes = 1;
             assert(i + extraBytes < size);
@@ -263,7 +305,7 @@ bool decode (unsigned char * data, int size)
                     reg = wordRegs[rm];
                 }
 
-                printf("%s %s, %d\n", instruction, reg, data);
+                printf("%s %s, %d\n", semantics, reg, data);
             }
             // Memory mode
             else
@@ -314,18 +356,18 @@ bool decode (unsigned char * data, int size)
 
                 if (disp == 0)
                 {
-                    printf("%s %s [%s], %d\n", instruction, prefix, addr, data);
+                    printf("%s %s [%s], %d\n", semantics, prefix, addr, data);
                 }
                 else
                 {
-                    printf("%s %s [%s + %d], %d\n", instruction, prefix, addr, disp, data);
+                    printf("%s %s [%s + %d], %d\n", semantics, prefix, addr, disp, data);
                 }
             }
 
             i += 1 + extraBytes;
         }
         // MOV immediate to register
-        else if (((byte >> 4) & 0b00001111) == 0b00001011)
+        else if (instructionType == MoveImmR)
         {
             const bool w = ((byte >> 3) & 0b00000001) != 0;
             int extraBytes = 1;
@@ -361,7 +403,7 @@ bool decode (unsigned char * data, int size)
             i += 1 + extraBytes;
         }
         // Add to accumulator
-        else if (addAcc)
+        else if (instructionType == AddAcc)
         {
             int extraBytes = 1;
             assert(i + extraBytes < size);
@@ -382,7 +424,7 @@ bool decode (unsigned char * data, int size)
             else
                 reg = "al";
 
-            printf("%s %s,%d\n", instruction, reg, data);
+            printf("%s %s,%d\n", semantics, reg, data);
 
             i += 1 + extraBytes;
         }
