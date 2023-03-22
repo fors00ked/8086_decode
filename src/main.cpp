@@ -43,10 +43,13 @@ enum InstructionSubtype
 {
     MoveRM = 0,     // Move to/from register/memory
     AddRM,          // Add register/memory
+    SubRM,          // Sub register/memory
     MoveImmRM,      // Move immediate to register/memory
     MoveImmR,       // Move immediate to register
     AddImm,         // Add immediate
     AddAcc,         // Add to accumulator
+    SubImm,         // Sub immediate
+    SubAcc,         // Sub to accumulator
     InstructionSubtypeMax
 };
 
@@ -95,36 +98,55 @@ const char * GetEffectiveAddress(int rm)
     return addr;
 }
 
-Instruction GetInstruction(uchar byte, InstructionSubtype * type)
+Instruction GetInstruction(uchar byte1, uchar byte2, InstructionSubtype * type)
 {
     *type = InstructionSubtypeMax;
 
-    if (((byte >> 2) & 0b00111111) == 0b00100010)
+    if (((byte1 >> 2) & 0b00111111) == 0b00100010)
     {
         *type = MoveRM;
         return Mov;
     }
-    else if (((byte >> 2) & 0b00111111) == 0b00000000)
+    else if (((byte1 >> 2) & 0b00111111) == 0b00000000)
     {
         *type = AddRM;
         return Add;
     }
-    else if (((byte >> 1) & 0b01111111) == 0b01100011)
+    else if (((byte1 >> 2) & 0b00111111) == 0b00001010)
+    {
+        *type = SubRM;
+        return Sub;
+    }
+    else if (((byte1 >> 1) & 0b01111111) == 0b01100011)
     {
         *type = MoveImmRM;
         return Mov;
     }
-    else if (((byte >> 2) & 0b00111111) == 0b00100000)
+    else if (((byte1 >> 2) & 0b00111111) == 0b00100000)
     {
-        *type = AddImm;
-        return Add;
+        const uchar mod = (byte2 & 0b000111000) >> 3;
+        if (mod == 0b000)
+        {
+            *type = AddImm;
+            return Add;
+        }
+        else if (mod == 0b101)
+        {
+            *type = SubImm;
+            return Sub;
+        }
     }
-    else if (((byte >> 1) & 0b01111111) == 0b00000010)
+    else if (((byte1 >> 1) & 0b01111111) == 0b00000010)
     {
         *type = AddAcc;
         return Add;
     }
-    else if (((byte >> 4) & 0b00001111) == 0b00001011)
+    else if (((byte1 >> 1) & 0b01111111) == 0b00010110)
+    {
+        *type = SubAcc;
+        return Sub;
+    }
+    else if (((byte1 >> 4) & 0b00001111) == 0b00001011)
     {
         *type = MoveImmR;
         return Mov;
@@ -139,23 +161,24 @@ bool decode (unsigned char * data, int size)
     int i = 0;
     while (i < size)
     {
-        const uchar byte = p[i];
+        const uchar byte1 = p[i];
+        int extraBytes = 1;
+        assert(i + extraBytes < size);
+        const uchar byte2 = p[i + extraBytes];
 
         InstructionSubtype instructionType;
-        Instruction instruction = GetInstruction(byte, &instructionType);
+        Instruction instruction = GetInstruction(byte1, byte2, &instructionType);
 
         const char * semantics = Semantics[instruction];
 
         // MOV/ADD to/from register/memory
-        if (instructionType == MoveRM || instructionType == AddRM)
+        if (instructionType == MoveRM ||
+            instructionType == AddRM ||
+            instructionType == SubRM)
         {
-            int extraBytes = 1;
-            assert(i + extraBytes < size);
-
-            const uchar byte2 = p[i+1];
             const uchar reg = (byte2 & 0b00111000) >> 3;
-            const bool w = (byte & 0b00000001) != 0;
-            const bool d = (byte & 0b00000010) != 0;
+            const bool w = (byte1 & 0b00000001) != 0;
+            const bool d = (byte1 & 0b00000010) != 0;
             const char * reg1 = nullptr;
             // Wide?
             if (!w)
@@ -211,7 +234,7 @@ bool decode (unsigned char * data, int size)
                     r2 = reg2;
                 }
 
-                printf("mov %s,%s\n", r1, r2);
+                printf("%s %s,%s\n", semantics, r1, r2);
             }
             // Memory mode, no displacement
             else
@@ -269,14 +292,13 @@ bool decode (unsigned char * data, int size)
             i += 1 + extraBytes;
         }
         // MOV/ADD immediate to register/memory
-        else if (instructionType == MoveImmRM || instructionType == AddImm)
+        else if (instructionType == MoveImmRM ||
+                 instructionType == AddImm ||
+                 instructionType == SubImm)
         {
-            int extraBytes = 1;
-            assert(i + extraBytes < size);
-
             const uchar byte2 = p[i + extraBytes];
-            const bool w = (byte & 0b00000001) != 0;
-            const bool s = (byte & 0b00000010) != 0;
+            const bool w = (byte1 & 0b00000001) != 0;
+            const bool s = (byte1 & 0b00000010) != 0;
 
             const uchar mod = (byte2 & 0b11000000) >> 6;
             const uchar rm = byte2 & 0b00000111;
@@ -369,12 +391,10 @@ bool decode (unsigned char * data, int size)
         // MOV immediate to register
         else if (instructionType == MoveImmR)
         {
-            const bool w = ((byte >> 3) & 0b00000001) != 0;
-            int extraBytes = 1;
-            assert(i + extraBytes < size);
+            const bool w = ((byte1 >> 3) & 0b00000001) != 0;
 
             const uchar byte2 = p[i + extraBytes];
-            const uchar reg = byte & 0b00000111;
+            const uchar reg = byte1 & 0b00000111;
             if (reg >= NUM_REGS)
             {
                 printf("Register index for REG is too large\n");
@@ -403,16 +423,13 @@ bool decode (unsigned char * data, int size)
             i += 1 + extraBytes;
         }
         // Add to accumulator
-        else if (instructionType == AddAcc)
+        else if (instructionType == AddAcc ||
+                 instructionType == SubAcc)
         {
-            int extraBytes = 1;
-            assert(i + extraBytes < size);
-
-            const uchar byte2 = p[i + extraBytes];
             ushort data = (ushort)byte2;
 
             const char * reg = nullptr;
-            const bool w = (byte & 0b00000001) != 0;
+            const bool w = (byte1 & 0b00000001) != 0;
             if (w)
             {
                 extraBytes += 1;
