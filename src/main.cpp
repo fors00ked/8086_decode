@@ -36,6 +36,26 @@ enum Instruction
     Add,
     Sub,
     Cmp,
+    JE,
+    JL,
+    JLE,
+    JB,
+    JBE,
+    JP,
+    JO,
+    JS,
+    JNE,
+    JNL,
+    JG,
+    JNB,
+    JA,
+    JNP,
+    JNO,
+    JNS,
+    Loop,
+    LoopZ,
+    LoopNZ,
+    Jcxz,
     InstructionMax
 };
 
@@ -61,7 +81,27 @@ const char * Semantics[] =
     "mov",
     "add",
     "sub",
-    "cmp"
+    "cmp",
+    "je",
+    "jl",
+    "jle",
+    "jb",
+    "jbe",
+    "jp",
+    "jo",
+    "js",
+    "jne",
+    "jnl",
+    "jg",
+    "jnb",
+    "ja",
+    "jnp",
+    "jno",
+    "jns",
+    "loop",
+    "loopz",
+    "loopnz",
+    "jcxz"
 };
 
 static_assert(Instruction::InstructionMax == sizeof(Semantics) / sizeof(Semantics[0]));
@@ -168,6 +208,86 @@ Instruction GetInstruction(uchar byte1, uchar byte2, InstructionSubtype * type)
     {
         *type = MoveImmR;
         return Mov;
+    }
+    else if (byte1 == 0b01110100)
+    {
+        return JE;
+    }
+    else if (byte1 == 0b01111100)
+    {
+        return JL;
+    }
+    else if (byte1 == 0b01111110)
+    {
+        return JLE;
+    }
+    else if (byte1 == 0b01110010)
+    {
+        return JB;
+    }
+    else if (byte1 == 0b01110110)
+    {
+        return JBE;
+    }
+    else if (byte1 == 0b01111010)
+    {
+        return JP;
+    }
+    else if (byte1 == 0b01110000)
+    {
+        return JO;
+    }
+    else if (byte1 == 0b01111000)
+    {
+        return JS;
+    }
+    else if (byte1 == 0b01110101)
+    {
+        return JNE;
+    }
+    else if (byte1 == 0b01111101)
+    {
+        return JNL;
+    }
+    else if (byte1 == 0b01111111)
+    {
+        return JG;
+    }
+    else if (byte1 == 0b01110011)
+    {
+        return JNB;
+    }
+    else if (byte1 == 0b01110111)
+    {
+        return JA;
+    }
+    else if (byte1 == 0b01111011)
+    {
+        return JNP;
+    }
+    else if (byte1 == 0b01110001)
+    {
+        return JNO;
+    }
+    else if (byte1 == 0b01111001)
+    {
+        return JNS;
+    }
+    else if (byte1 == 0b11100010)
+    {
+        return Loop;
+    }
+    else if (byte1 == 0b11100001)
+    {
+        return LoopZ;
+    }
+    else if (byte1 == 0b11100000)
+    {
+        return LoopNZ;
+    }
+    else if (byte1 == 0b11100011)
+    {
+        return Jcxz;
     }
 
     return InstructionMax;
@@ -316,7 +436,6 @@ bool decode (unsigned char * data, int size)
                  instructionType == SubImm ||
                  instructionType == CmpImm)
         {
-            const uchar byte2 = p[i + extraBytes];
             const bool w = (byte1 & 0b00000001) != 0;
             const bool s = (byte1 & 0b00000010) != 0;
 
@@ -433,7 +552,6 @@ bool decode (unsigned char * data, int size)
         {
             const bool w = ((byte1 >> 3) & 0b00000001) != 0;
 
-            const uchar byte2 = p[i + extraBytes];
             const uchar reg = byte1 & 0b00000111;
             if (reg >= NUM_REGS)
             {
@@ -483,6 +601,24 @@ bool decode (unsigned char * data, int size)
                 reg = "al";
 
             printf("%s %s, %d\n", semantics, reg, data);
+
+            i += 1 + extraBytes;
+        }
+        else if (instruction >= JE && instruction <= Jcxz)
+        {
+            const char offset = ((char)byte2) + 2;
+            if (offset > 0)
+            {
+                printf("%s $+%d\n", semantics, offset);
+            }
+            else if (offset < 0)
+            {
+                printf("%s $%d\n", semantics, offset);
+            }
+            else
+            {
+                printf("%s $+0\n", semantics);
+            }
 
             i += 1 + extraBytes;
         }
