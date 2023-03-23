@@ -373,7 +373,7 @@ bool decode (unsigned char * data, int size)
                     r2 = reg2;
                 }
 
-                printf("%s %s,%s\n", semantics, r1, r2);
+                printf("%s %s, %s\n", semantics, r1, r2);
             }
             // Memory mode, no displacement
             else
@@ -399,7 +399,6 @@ bool decode (unsigned char * data, int size)
                     const uchar byte3 = p[i + extraBytes - 1];
                     const uchar byte4 = p[i + extraBytes];
                     disp = (((ushort)byte4) << 8) | byte3;
-                    extraBytes += 2;
                 }
 
                 if (!d)
